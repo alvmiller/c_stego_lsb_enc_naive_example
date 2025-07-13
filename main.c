@@ -14,8 +14,28 @@
 #include <assert.h>
 #include <math.h>
 #include <string.h>
+#include <openssl/aes.h>
+#include <openssl/modes.h>
+#include <openssl/evp.h>
+#include <openssl/rand.h> 
+#include <openssl/hmac.h>
+#include <openssl/buffer.h>
+#include <openssl/conf.h>
+#include <openssl/evp.h>
+#include <openssl/err.h>
+#include <string.h>
 
 ///////////////////////////////////////////////////////////////////////////////
+
+/*
+https://medium.com/@amit.kulkarni/encrypting-decrypting-a-file-using-openssl-evp-b26e0e4d28d4
+https://stackoverflow.com/questions/44246967/how-to-convert-aes-encrypt-in-counter-mode-to-evp-interfaces
+https://forums.developer.nvidia.com/t/problem-with-openssl-undefined-reference-to-crypto-gcm128-init/171249/2
+https://stackoverflow.com/questions/52369124/what-is-exact-alternate-api-instead-of-aes-ctr128-encrypt-from-openssl-1-1-0
+https://stackoverflow.com/questions/29441005/aes-ctr-encryption-and-decryption
+https://www.gurutechnologies.net/blog/aes-ctr-encryption-in-c/
+https://wiki.openssl.org/index.php/EVP_Symmetric_Encryption_and_Decryption
+*/
 
 /* LSB - least significant bit */
 
@@ -29,6 +49,12 @@
 // -std=c2x
 // -std=gnu11
 // ./a.out
+
+
+// sudo apt-get install libssl-dev
+// gcc -Wall -Wextra -Werror -static -o myApp \
+// 	source1.o source2.o common.o \
+// 	-Lopenssl/openssl-X/ -lssl -lcrypto -Iopenssl/openssl-X/include
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -370,6 +396,82 @@ static inline int write_file(
 
 ///////////////////////////////////////////////////////////////////////////////
 
+static const unsigned char const key_arr[AES_BLOCK_SIZE] = {};
+static const unsigned char const iv_arr[AES_BLOCK_SIZE] = {};
+
+void handleErrors(void)
+{
+    ERR_print_errors_fp(stderr);
+    abort();
+}
+
+// ctr, cfb, ofb
+static int encrypt_data_aes_ctr(
+	const uint8_t * const raw_data, uint8_t *enc_data, size_t data_sz)
+{
+	size_t enc_data_sz = 0;
+	EVP_CIPHER_CTX *ctx = NULL;
+	int len = 0;
+
+	if (!(ctx = EVP_CIPHER_CTX_new())) {
+		handleErrors();
+	}
+	if (1 != EVP_EncryptInit_ex(
+		ctx, EVP_aes_128_ctr(), NULL, key_arr, iv_arr)) {
+		handleErrors();
+	}
+	if (1 != EVP_EncryptUpdate(
+		ctx, enc_data, &len, raw_data, data_sz)) {
+		handleErrors();
+	}
+	enc_data_sz = (size_t)len;
+	if (1 != EVP_EncryptFinal_ex(ctx, enc_data + len, &len)) {
+		handleErrors();
+	}
+	enc_data_sz += (size_t)len;
+	EVP_CIPHER_CTX_free(ctx);
+
+	if (enc_data_sz != data_sz) {
+		exit(-1);
+	}
+
+	return 0;
+}
+
+static int decrypt_data_aes_ctr(
+	const uint8_t * const enc_data, uint8_t *raw_data, size_t enc_data_sz)
+{
+	size_t raw_data_sz = 0;
+	EVP_CIPHER_CTX *ctx = NULL;
+	int len = 0;
+
+	if (!(ctx = EVP_CIPHER_CTX_new())) {
+		handleErrors();
+	}
+	if (1 != EVP_DecryptInit_ex(
+		ctx, EVP_aes_128_ctr(), NULL, key_arr, iv_arr)) {
+		handleErrors();
+	}
+	if (1 != EVP_DecryptUpdate(
+		ctx, raw_data, &len, enc_data, enc_data_sz)) {
+		handleErrors();
+	}
+	raw_data_sz = (size_t)len;
+	if (1 != EVP_DecryptFinal_ex(ctx, raw_data + len, &len)) {
+		handleErrors();
+	}
+	raw_data_sz += len;
+	EVP_CIPHER_CTX_free(ctx);
+
+	if (raw_data_sz != enc_data_sz) {
+		exit(-1);
+	}
+
+	return 0;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
 static inline bool is_wav_file(
 	const char * const file_name,
 	const uint8_t * const file, const size_t sz)
@@ -408,6 +510,8 @@ static inline bool is_wav_file(
 	printf("\t\t\t Is .wav file\n");
 	return true;	
 }
+
+///////////////////////////////////////////////////////////////////////////////
 
 static const char *input_container = "basic.wav";
 static const char *input_data = "data.txt";
@@ -480,6 +584,15 @@ static int hide_data()
 	StegoWave_t *s = (StegoWave_t *)container_buf;
 	s->hidden_data_size = data_sz;
 
+	_cleanup_free_ uint8_t *enc_data_buf = calloc(1, data_sz);
+	if (enc_data_buf == NULL) {
+		return -1;
+	}
+	ret = encrypt_data_aes_ctr(data_buf, enc_data_buf, data_sz);
+	if (ret != 0) {
+		return -1;
+	}
+
 	uint8_t *pc = container_buf + sizeof(StegoWave_t);
 	size_t pc_sz = container_sz - sizeof(StegoWave_t);
 	ssize_t data_idx = 0;
@@ -493,7 +606,7 @@ static int hide_data()
 		++data_idx
 	) {
 		for (int i = 7; i >= 0; --i) {
-			uint8_t bit = get_bit(data_buf[data_idx], (unsigned char)i);
+			uint8_t bit = get_bit(enc_data_buf[data_idx], (unsigned char)i);
 			bit == 0 ?
 				clear_bit(&pc[container_idx], LSB_VAL)
 				:
@@ -599,6 +712,15 @@ static int unhide_data()
 		return -1;
 	}
 
+	_cleanup_free_ uint8_t *dec_data_buf = calloc(1, data_sz);
+	if (dec_data_buf == NULL) {
+		return -1;
+	}
+	ret = decrypt_data_aes_ctr(data_buf, dec_data_buf, data_sz);
+	if (ret != 0) {
+		return -1;
+	}
+
 	_cleanup_close_ int data_fd = -1;
 	size_t data_sz_tmp = 0;
 	ret = open_file(output_data, &data_fd, &data_sz_tmp, true);
@@ -607,7 +729,7 @@ static int unhide_data()
 		return -1;
 	}
 	printf("\t data container write()\n");
-	ret = write_file(data_fd, output_data, data_buf, data_sz);
+	ret = write_file(data_fd, output_data, dec_data_buf, data_sz);
 	if (ret != 0) {
 		return -1;
 	}
