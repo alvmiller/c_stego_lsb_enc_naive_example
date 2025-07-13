@@ -13,6 +13,7 @@
 #include <limits.h>
 #include <assert.h>
 #include <math.h>
+#include <string.h>
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -350,7 +351,8 @@ static inline int write_file(
 	ssize_t ret = -1;
 	const uint8_t *buf = data;
 	while (len != 0 && ((ret = write(fd, buf, len)) != sz)) {
-		printf("\tError: Not all data had been written (ret = %zd)\n", ret);
+		printf("\tError: Not all data had been written (ret = %zd)\n",
+			ret);
 		if (ret == -1) {
 			perror("\tGot error");
 			if (errno == EINTR) {
@@ -367,6 +369,45 @@ static inline int write_file(
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+
+static inline bool is_wav_file(
+	const char * const file_name,
+	const uint8_t * const file, const size_t sz)
+{
+	if (file_name == NULL || file == NULL) {
+		return false;
+	}
+	if (sz == 0 || sz <= sizeof(StegoWave_t)) {
+		return false;
+	}
+
+	size_t str_len = strlen(file_name);
+	if (str_len < strlen("x.wav")) {
+		return false;
+	}
+	const char *ps = file_name + (str_len - strlen(".wav"));
+	int str_cmp = strcmp(ps, ".wav");
+	if (str_cmp != 0) {
+		return false;
+	}
+
+	StegoWave_t *s = (StegoWave_t *)file;
+	int res = memcmp(s->header.FileTypeBlocID, "RIFF", 4);
+	if (res != 0) {
+		return false;
+	}
+	res = memcmp(s->header.FileFormatID, "WAVE", 4);
+	if (res != 0) {
+		return false;
+	}
+	res = memcmp(s->header.FormatBlocID, "fmt ", 4);
+	if (res != 0) {
+		return false;
+	}
+
+	printf("\t\t\t Is .wav file\n");
+	return true;	
+}
 
 static const char *input_container = "basic.wav";
 static const char *input_data = "data.txt";
@@ -397,10 +438,6 @@ static int hide_data()
 
 	size_t size_sz = sizeof(((StegoWave_t *)NULL)->hidden_data_size);
 	double size_sz_max = (size_t)pow(2, size_sz * CHAR_BIT) - 1;
-	printf("\t sizeof(hidden_data_size) bytes: %zu\n", size_sz);
-	printf("\t hidden_data_size max value: %zu\n", (size_t)size_sz_max);
-	printf("\t sizeof(uint16_t) bytes: %zu\n", sizeof(uint16_t));
-	printf("\t UINT16_MAX: %u\n", UINT16_MAX);
 	if (data_sz > (size_t)size_sz_max) {
 		return -1;
 	}
@@ -438,49 +475,29 @@ static int hide_data()
 		return -1;
 	}
 
+	(void)is_wav_file(input_container, container_buf, container_sz);
+
 	StegoWave_t *s = (StegoWave_t *)container_buf;
 	s->hidden_data_size = data_sz;
 
 	uint8_t *pc = container_buf + sizeof(StegoWave_t);
-	size_t container_data_sz = container_sz - sizeof(StegoWave_t);
+	size_t pc_sz = container_sz - sizeof(StegoWave_t);
 	ssize_t data_idx = 0;
 	ssize_t container_idx = 0;
 	printf("\t data_sz = %zu\n", data_sz);
 	printf("\t container_sz = %zu\n", container_sz);
-	printf("\t container_data_sz = %zu\n", container_data_sz);
-	//printf("\n");
+	printf("\t pc_sz = %zu\n", pc_sz);
 	for (
 		data_idx = 0, container_idx = 0;
-		data_idx < data_sz && container_idx < container_data_sz;
+		data_idx < data_sz && container_idx < pc_sz;
 		++data_idx
 	) {
 		for (int i = 7; i >= 0; --i) {
-/*
-			printf("\t >>> container[%zu] = %u\n", container_idx, container_buf[container_idx]);
-			printf("\t pc[%zu] = %u\n\t ", container_idx, pc[container_idx]);
-			print_u8bits(pc[container_idx]);
-			printf("\t data[%zu] = %u (%c)\n\t ", data_idx, data_buf[data_idx], data_buf[data_idx]);
-			print_u8bits(data_buf[data_idx]);
-			int16_t tmp0 = pc[container_idx];
-*/
 			uint8_t bit = get_bit(data_buf[data_idx], (unsigned char)i);
 			bit == 0 ?
 				clear_bit(&pc[container_idx], LSB_VAL)
 				:
 				set_bit(&pc[container_idx], LSB_VAL);
-/*
-			int16_t tmp1 = pc[container_idx];
-			int16_t tmp = tmp0 - tmp1;
-			printf("\t bit[%d] = %u\n", i, bit);
-			printf("\t\t diff (%d - %d) = %d\n", tmp0, tmp1, tmp);
-			if (tmp != 0 && tmp != 1 && tmp != -1) {
-				printf("\t\t ERROR!\n");
-				exit(-1);
-			}
-			printf("\t pc[%zu] = %u\n\t ", container_idx, pc[container_idx]);
-			print_u8bits(pc[container_idx]);
-			printf("\n");
-*/
 			container_idx += CONTAINER_BYTE_INC;
 		}
 	}
@@ -534,6 +551,9 @@ static int unhide_data()
 	if (ret != 0) {
 		return -1;
 	}
+
+	(void)is_wav_file(
+		output_data_container, data_container_buf, data_container_sz);
 
 	StegoWave_t *s = (StegoWave_t *)data_container_buf;
 	size_t data_sz = s->hidden_data_size;
@@ -601,8 +621,8 @@ static int unhide_data()
 
 int main()
 {
-	hide_data();
-	unhide_data();
+	(void)hide_data();
+	(void)unhide_data();
 
 	return 0;
 }
