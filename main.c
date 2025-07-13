@@ -56,6 +56,9 @@ https://wiki.openssl.org/index.php/EVP_Symmetric_Encryption_and_Decryption
 // 	source1.o source2.o common.o \
 // 	-Lopenssl/openssl-X/ -lssl -lcrypto -Iopenssl/openssl-X/include
 
+// reset; gcc main.c -lm -lssl -lcrypto
+// ./a.out
+
 ///////////////////////////////////////////////////////////////////////////////
 
 /*
