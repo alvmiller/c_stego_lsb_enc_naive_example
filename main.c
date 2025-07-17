@@ -642,6 +642,7 @@ static int hide_data()
 			if (res_val != 0 && res_val != 1 && res_val != -1) {
 				exit(-2);
 			}
+			assert(res_val == 0 || res_val == 1 || res_val == -1);
 #endif
 			container_idx += CONTAINER_BYTE_INC;
 		}
