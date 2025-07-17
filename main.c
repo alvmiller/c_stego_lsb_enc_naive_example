@@ -56,7 +56,7 @@ https://wiki.openssl.org/index.php/EVP_Symmetric_Encryption_and_Decryption
 // 	source1.o source2.o common.o \
 // 	-Lopenssl/openssl-X/ -lssl -lcrypto -Iopenssl/openssl-X/include
 
-// reset; gcc main.c -lm -lssl -lcrypto
+// reset; gcc -DDEBUG_MSG main.c -lm -lssl -lcrypto
 // ./a.out
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -75,6 +75,11 @@ https://wiki.openssl.org/index.php/EVP_Symmetric_Encryption_and_Decryption
 
 ///////////////////////////////////////////////////////////////////////////////
 
+//#define DEBUG_MSG
+
+///////////////////////////////////////////////////////////////////////////////
+
+#ifdef DEBUG_MSG
 static inline void print_hexdump(const void* data, size_t size)
 {
 	char ascii[17] = {};
@@ -111,7 +116,7 @@ static inline void print_u8bits(const uint8_t val)
 	unsigned bit = 0;
 	unsigned num = 0;
 
-	for (int i = 7; i >= 0; --i) {
+	for (int i = (CHAR_BIT - 1); i >= 0; --i) {
 		unsigned num = (unsigned)i;
 		mask = 1 << i;
 		bit = (val & mask) >> i;
@@ -124,6 +129,7 @@ static inline void print_u8bits(const uint8_t val)
 
 	return;
 }
+#endif
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -159,35 +165,51 @@ static inline void _freep_(void *p)
 
 static inline void set_bit(unsigned char *val, unsigned char id)
 {
-    // for several: mask(x) | mask (y)
-    
-    *val |= MASK(id);
-    return;
+	// for several: mask(x) | mask (y)
+
+	*val |= MASK(id);
+	return;
 }
 
 static inline void clear_bit(unsigned char *val, unsigned char id)
 {
-    *val &= ~MASK(id);
-    return;
+	*val &= ~MASK(id);
+	return;
 }
 
 static inline void invert_bit(unsigned char *val, unsigned char id)
 {
-    *val ^= MASK(id);
-    return;
+	*val ^= MASK(id);
+	return;
 }
 
 static inline bool is_bit_1(unsigned char *val, unsigned char id)
 {
-    if (*val & MASK(id)) {
-        return true;
-    }
-    return false;
+	if (*val & MASK(id)) {
+		return true;
+	}
+	return false;
 }
 
 static inline unsigned char get_bit(unsigned char val, unsigned char id)
 {
 	return (val & MASK(id)) >> id;
+}
+
+static inline void insert_bit(
+	unsigned char *val, unsigned char id, unsigned char bit)
+{
+	if (bit != 0 && bit != 1) {
+		abort();
+	}
+
+	if (bit == 0) {
+		clear_bit(val, id);
+	} else {
+		set_bit(val, id);
+	}
+
+	return;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -608,12 +630,19 @@ static int hide_data()
 		data_idx < data_sz && container_idx < pc_sz;
 		++data_idx
 	) {
-		for (int i = 7; i >= 0; --i) {
+		for (int i = (CHAR_BIT - 1); i >= 0; --i) {
+#ifdef DEBUG_MSG
+			int old_val = pc[container_idx];
+#endif
 			uint8_t bit = get_bit(enc_data_buf[data_idx], (unsigned char)i);
-			bit == 0 ?
-				clear_bit(&pc[container_idx], LSB_VAL)
-				:
-				set_bit(&pc[container_idx], LSB_VAL);
+			insert_bit(&pc[container_idx], LSB_VAL, bit);
+#ifdef DEBUG_MSG
+			int new_val = pc[container_idx];
+			int res_val = new_val - old_val;
+			if (res_val != 0 && res_val != 1 && res_val != -1) {
+				exit(-2);
+			}
+#endif
 			container_idx += CONTAINER_BYTE_INC;
 		}
 	}
@@ -702,12 +731,9 @@ static int unhide_data()
 		data_idx < data_sz && container_idx < pc_sz;
 		++data_idx
 	) {
-		for (int i = 7; i >= 0; --i) {
+		for (int i = (CHAR_BIT - 1); i >= 0; --i) {
 			uint8_t bit = get_bit(pc[container_idx], LSB_VAL);
-			bit == 0 ?
-				clear_bit(&data_buf[data_idx], (unsigned char)i)
-				:
-				set_bit(&data_buf[data_idx], (unsigned char)i);
+			insert_bit(&data_buf[data_idx], (unsigned char)i, bit);
 			container_idx += CONTAINER_BYTE_INC;
 		}
 	}
