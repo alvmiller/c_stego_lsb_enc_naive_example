@@ -28,6 +28,21 @@
 ///////////////////////////////////////////////////////////////////////////////
 
 /*
+https://github.com/emirat8/LSB-Video-Steganography
+https://medium.com/better-programming/a-guide-to-video-steganography-using-python-4f010b32a5b7
+https://link.springer.com/article/10.1007/s11042-023-14844-w
+https://medium.com/@vedanshvijay/steganography-5d9d8a557587
+https://github.com/JavDomGom/videostego
+
+https://www.mmsp.ece.mcgill.ca/Documents/AudioFormats/WAVE/WAVE.html
+https://docs.fileformat.com/audio/wav/
+https://isip.piconepress.com/projects/speech/software/tutorials/production/fundamentals/v1.0/section_02/s02_01_p05.html
+http://soundfile.sapp.org/doc/WaveFormat/
+https://www.loc.gov/preservation/digital/formats/fdd/fdd000001.shtml
+https://www.tpx.com/support/wav-file-specifications/
+https://www.tpx.com/support/wav-file-specifications/
+
+
 https://medium.com/@amit.kulkarni/encrypting-decrypting-a-file-using-openssl-evp-b26e0e4d28d4
 https://stackoverflow.com/questions/44246967/how-to-convert-aes-encrypt-in-counter-mode-to-evp-interfaces
 https://forums.developer.nvidia.com/t/problem-with-openssl-undefined-reference-to-crypto-gcm128-init/171249/2
