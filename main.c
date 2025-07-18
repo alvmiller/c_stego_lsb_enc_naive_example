@@ -308,7 +308,7 @@ typedef struct {
 
 #define BUILD_BUG_ON_WITH_ZERO(condition) sizeof(struct { unsigned long :-!!(condition); })
 
-#define CONTAINER_BYTE_INC (4)
+//#define CONTAINER_BYTE_INC (4)
 #define LSB_VAL (0)
 
 static inline int get_min_container_size(size_t data_sz, size_t *resulted_sz)
@@ -326,10 +326,12 @@ static inline int get_min_container_size(size_t data_sz, size_t *resulted_sz)
 	if (__builtin_mul_overflow(data_sz, CHAR_BIT, &tmp)) {
         	return -1;
     	}
+/*
     	// each 4th byte used
 	if (__builtin_mul_overflow(tmp, CONTAINER_BYTE_INC, &tmp)) {
         	return -1;
     	}
+*/
     	// + header + wasted data
 	if (__builtin_add_overflow(tmp, sizeof(StegoWave_t), &tmp)) {
         	return -1;
@@ -595,7 +597,17 @@ static int hide_data()
 		return -1;
 	}
 	printf("\t needed sz: %ld\n", needed_sz);
-	if (needed_sz > (container_sz - sizeof(StegoWave_t))) {
+	if (container_sz <= sizeof(StegoWave_t)) {
+		return -1;
+	}
+	size_t container_data_sz = container_sz - sizeof(StegoWave_t);
+	if (needed_sz > container_data_sz) {
+		return -1;
+	}
+	// CONTAINER_BYTE_INC
+	const ssize_t container_byte_inc_real =
+		(container_data_sz / data_sz) / CHAR_BIT;
+	if (container_byte_inc_real <= 0) {
 		return -1;
 	}
 
@@ -659,7 +671,8 @@ static int hide_data()
 			}
 			assert(res_val == 0 || res_val == 1 || res_val == -1);
 #endif
-			container_idx += CONTAINER_BYTE_INC;
+			//container_idx += CONTAINER_BYTE_INC;
+			container_idx += container_byte_inc_real;
 		}
 	}
 	if (data_idx < data_sz) {
@@ -729,7 +742,14 @@ static int unhide_data()
 	if (data_container_sz <= sizeof(StegoWave_t)) {
 		return -1;
 	}
-	if (needed_sz > (data_container_sz - sizeof(StegoWave_t))) {
+	size_t container_data_sz = data_container_sz - sizeof(StegoWave_t);
+	if (needed_sz > container_data_sz) {
+		return -1;
+	}
+	// CONTAINER_BYTE_INC
+	const ssize_t container_byte_inc_real =
+		(container_data_sz / data_sz) / CHAR_BIT;
+	if (container_byte_inc_real <= 0) {
 		return -1;
 	}
 
@@ -750,7 +770,8 @@ static int unhide_data()
 		for (int i = (CHAR_BIT - 1); i >= 0; --i) {
 			uint8_t bit = get_bit(pc[container_idx], LSB_VAL);
 			insert_bit(&data_buf[data_idx], (unsigned char)i, bit);
-			container_idx += CONTAINER_BYTE_INC;
+			//container_idx += CONTAINER_BYTE_INC;
+			container_idx += container_byte_inc_real;
 		}
 	}
 	if (data_idx < data_sz) {
